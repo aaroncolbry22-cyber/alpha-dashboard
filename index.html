@@ -136,6 +136,7 @@
   .position .main{ flex:1; min-width:0; }
   .watch-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
   .ticker{ font-weight:700; font-size:16px; }
+  .hold-val{ font-weight:700; font-size:17px; }
   .watch-detail{ color:var(--dim); font-size:13px; margin-top:1px; }
   .pos{ color:var(--green); } .neg{ color:var(--red); } .flat{ color:var(--dim); }
   .empty{ color:var(--dim); padding:14px 2px; }
@@ -205,7 +206,7 @@
     </div>
 
     <section aria-label="Open positions">
-      <h2>Open positions <span id="pos-count" style="letter-spacing:0;text-transform:none;"></span></h2>
+      <h2>Holdings <span id="pos-count" style="letter-spacing:0;text-transform:none;"></span></h2>
       <div class="card" style="padding-top:2px;padding-bottom:2px;"><div id="positions"></div></div>
     </section>
 
@@ -449,22 +450,33 @@ refreshFreshness();
 setInterval(refreshFreshness, 30000);
 
 /* ---- positions ---- */
+function fmtQty(n){
+  return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+function fmtPrice(p){
+  if (!p || p <= 0) return "—";
+  if (p >= 1) return "$" + p.toFixed(2);
+  if (p >= 0.01) return "$" + p.toFixed(4);
+  return "$" + Number(p.toPrecision(3));
+}
 function renderPositions(){
   var box = el("positions");
-  el("pos-count").textContent = STATE.positions.length ? "(" + STATE.positions.length + " open)" : "";
+  el("pos-count").textContent = STATE.positions.length ? "(" + STATE.positions.length + ")" : "";
   if (!STATE.positions.length) {
-    box.innerHTML = "<div class='empty'><strong>No open positions</strong>" +
-      "Waiting for a coin that passes every test.</div>";
+    box.innerHTML = "<div class='empty'><strong>No holdings right now</strong>" +
+      "Cash deploys into the best movers at the next check.</div>";
     return;
   }
   box.innerHTML = STATE.positions.map(function(p){
     var pct = p.entryCost > 0 ? ((p.unrealizedPnl || 0) / p.entryCost) * 100 : 0;
+    var price = p.livePrice || (p.tokensHeld ? (p.currentValue || 0) / p.tokensHeld : 0);
     return "<div class='position'><div class='avatar'>" + esc((p.ticker || "?").charAt(0)) + "</div>" +
       "<div class='main'><div class='watch-head'><span class='ticker'>" + esc(p.ticker) +
-      "</span><span class='num " + pnlClass(p.unrealizedPnl || 0) + "'>" + signedMoney(p.unrealizedPnl || 0) +
-      " (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%)</span></div>" +
-      "<div class='watch-detail'>In at " + money(p.entryCost || 0) + " · now worth " +
-      money(p.currentValue || 0) + "</div></div></div>";
+      "</span><span class='num hold-val'>" + money(p.currentValue || 0) + "</span></div>" +
+      "<div class='watch-head'><span class='watch-detail'>" + fmtQty(p.tokensHeld) + " coins · " +
+      fmtPrice(price) + " each</span>" +
+      "<span class='watch-detail num " + pnlClass(p.unrealizedPnl || 0) + "'>" + signedMoney(p.unrealizedPnl || 0) +
+      " (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%)</span></div></div></div>";
   }).join("");
 }
 renderPositions();
@@ -532,6 +544,7 @@ el("activity").innerHTML = STATE.activity.map(function(a){
         var unreal = 0, posValue = 0, any = false;
         (STATE.positions || []).forEach(function(p){
           var q = best[p.address]; if (!q || !p.tokensHeld) return;
+          p.livePrice = q.price;
           p.currentValue = p.tokensHeld * q.price;
           p.unrealizedPnl = p.currentValue - (p.entryCost || 0);
           unreal += p.unrealizedPnl; posValue += p.currentValue; any = true;
@@ -550,7 +563,7 @@ el("activity").innerHTML = STATE.activity.map(function(a){
         drawChart();
         el("live-label").textContent = "Live";
         el("live-dot").className = "dot live";
-        line.innerHTML = "<span style='color:#00c805'>● LIVE</span> prices from DEX Screener · updated " + fmtTime(new Date()) + " · refreshes every 45s · official balance settles each hourly sweep";
+        line.innerHTML = "<span style='color:#00c805'>● LIVE</span> prices from DEX Screener · updated " + fmtTime(new Date()) + " · refreshes every 45s · official balance settles every 30 min";
       })
       .catch(function(){
         line.textContent = "Live prices unavailable right now — showing last sweep values.";
