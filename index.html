@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -417,9 +420,12 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(t){
 });
 
 /* ---- status / freshness ---- */
-el("status-line").textContent = STATE.statusLine;
-el("updated-at").textContent = STATE.updatedAt;
-el("next-check").textContent = STATE.nextCheck;
+function renderMeta(){
+  el("status-line").textContent = STATE.statusLine;
+  el("updated-at").textContent = STATE.updatedAt;
+  el("next-check").textContent = STATE.nextCheck;
+}
+renderMeta();
 
 function refreshFreshness(){
   var updated = new Date(STATE.updatedAtISO).getTime();
@@ -500,18 +506,46 @@ el("watchlist").innerHTML = STATE.watchlist.map(function(w){
 renderWatchlist();
 
 /* ---- strategies ---- */
-el("strategies").innerHTML = STATE.strategies.map(function(s){
-  return "<div class='strat-row'><div><div class='strat-name'>" + esc(s.name) + "</div>" +
-    "<div class='strat-status'>" + esc(s.status) + "</div></div>" +
-    "<div class='strat-nums'><div class='pnl num " + pnlClass(s.netPnl) + "'>" + signedMoney(s.netPnl) + "</div>" +
-    "<div class='trades'>" + s.trades + (s.trades === 1 ? " trade" : " trades") + "</div></div></div>";
-}).join("");
+function renderStrategies(){
+  el("strategies").innerHTML = STATE.strategies.map(function(s){
+    return "<div class='strat-row'><div><div class='strat-name'>" + esc(s.name) + "</div>" +
+      "<div class='strat-status'>" + esc(s.status) + "</div></div>" +
+      "<div class='strat-nums'><div class='pnl num " + pnlClass(s.netPnl) + "'>" + signedMoney(s.netPnl) + "</div>" +
+      "<div class='trades'>" + s.trades + (s.trades === 1 ? " trade" : " trades") + "</div></div></div>";
+  }).join("");
+}
+renderStrategies();
 
 /* ---- activity ---- */
-el("activity").innerHTML = STATE.activity.map(function(a){
-  return "<li><div class='act-time'>" + esc(a.time) + " ET</div>" +
-    "<div class='act-text'>" + esc(a.text) + "</div></li>";
-}).join("");
+function renderActivity(){
+  el("activity").innerHTML = STATE.activity.map(function(a){
+    return "<li><div class='act-time'>" + esc(a.time) + " ET</div>" +
+      "<div class='act-text'>" + esc(a.text) + "</div></li>";
+  }).join("");
+}
+renderActivity();
+
+/* ---- STATE REFRESH ----
+   The page shell can sit in a phone cache; the DATA must not. Poll the
+   sibling state.json (cache-busted) and swap in newer settled state. */
+(function(){
+  function checkState(){
+    fetch("state.json?ts=" + Date.now(), { cache: "no-store" })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(ns){
+        if (!ns || !ns.updatedAtISO) return;
+        if (ns.updatedAtISO <= (STATE.updatedAtISO || "")) return;
+        STATE = ns;
+        renderMeta(); refreshFreshness();
+        renderBalance(); renderPositions(); renderWatchlist();
+        renderStrategies(); renderActivity(); drawChart();
+      })
+      .catch(function(){});
+  }
+  setInterval(checkState, 60000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) checkState(); });
+  setTimeout(checkState, 4000);
+})();
 
 /* ---- LIVE PRICES (client-side, DEX Screener public API) ----
    Polls live pair data for every token in positions + watchlist that has an
